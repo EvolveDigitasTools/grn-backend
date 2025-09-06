@@ -100,207 +100,6 @@ export const uploadGrn = async (req, res) => {
   }
 };
 
-// ✅ Upload Invoice (send via email) - Currently working
-// export const uploadInvoice = async (req, res) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).json({ message: "No file uploaded" });
-//     }
-
-//     const { invoiceDate } = req.body;
-
-//     const transporter = nodemailer.createTransport({
-//       host: "smtp.zoho.com",
-//       port: 465,
-//       secure: true,
-//       auth: {
-//         user: process.env.ZOHO_USER,
-//         pass: process.env.ZOHO_PASS,
-//       },
-//       from: process.env.ZOHO_USER,
-//     });
-
-//     transporter.verify((error, success) => {
-//       if (error) {
-//         console.error("SMTP connection error:", error);
-//       } else {
-//         console.log("SMTP server is ready:", success);
-//       }
-//     });
-
-//     const mailOptions = {
-//       from: `"Hemant K" <${process.env.ZOHO_USER}>`,
-//       to: "accounts@globalplugin.com, commerce@globalplugin.com",
-//       subject: `GRN Completion on - ${invoiceDate}`,
-//       text: `Dear Mam/Sir,\nPlease find attached purchase order:`,
-//       attachments: [
-//         {
-//           filename: req.file.originalname,
-//           content: req.file.buffer,
-//         },
-//       ],
-//     };
-
-//     await transporter.sendMail(mailOptions);
-
-//     res.json({ message: "Invoice sent successfully via email" });
-//   } catch (err) {
-//     console.error("Mail error:", err);
-//     res.status(500).json({ message: "Failed to send invoice", error: err.message });
-//   }
-// };
-
-// ✅ Upload Invoice (send via email) and scheduling mail - Phase 2 (Scheduling mail) - Working
-// export const uploadInvoice = async (req, res) => {
-//   try {
-//     if (!req.files || !req.files.invoiceFile) {
-//       return res.status(400).json({ message: "Invoice file is required" });
-//     }
-
-//     const invoiceFile = req.files.invoiceFile[0];
-//     const grnFile = req.files.grnFile[0];
-//     const { invoiceDate, vendor, vendorCode, poCode } = req.body;
-
-//     // use invoiceFile.buffer and grnFile.buffer as needed
-//     // attach both in email if required
-//     const transporter = nodemailer.createTransport({
-//       host: "smtp.zoho.com",
-//       port: 465,
-//       secure: true,
-//       auth: {
-//         user: process.env.ZOHO_USER,
-//         pass: process.env.ZOHO_PASS,
-//       },
-//       from: process.env.ZOHO_USER,
-//     });
-
-//     transporter.verify((error, success) => {
-//       if (error) {
-//         console.error("SMTP connection error:", error);
-//       } else {
-//         console.log("SMTP server is ready:", success);
-//       }
-//     });
-
-//     // Send Invoice Email Immediately
-//     const mailOptions = {
-//       from: `"Hemant K" <${process.env.ZOHO_USER}>`,
-//       to: "accounts@globalplugin.com, commerce@globalplugin.com",
-//       subject: `${poCode} - GRN Completion for ${vendor} (Code: ${vendorCode}) on - ${invoiceDate}`,
-//       text: `Dear Mam/Sir,\n\nVendor: ${vendor}\nVendor Code: ${vendorCode}\nPO Code: ${poCode}\n\nPlease find attached purchase order and GRN file.`,
-//       attachments: [
-//         { filename: grnFile.originalname, content: grnFile.buffer },
-//         { filename: invoiceFile.originalname, content: invoiceFile.buffer },
-//       ],
-//     };
-
-//     await transporter.sendMail(mailOptions);
-
-//     // ✅ 2. Schedule Payment Reminder (3 weeks later)
-//     const reminderDate = new Date(invoiceDate);
-//     reminderDate.setDate(reminderDate.getDate() + 25); // add 21 days
-
-//     schedule.scheduleJob(reminderDate, async () => {
-//       try {
-//         const reminderMail = {
-//           from: `"Hemant K" <${process.env.ZOHO_USER}>`,
-//           to: vendorEmail || "accounts@globalplugin.com, commerce@globalplugin.com",
-//           subject: `Payment Reminder for ${poCode} - ${Vendor} - Invoice dated ${invoiceDate}`,
-//           text: `Dear Team,\n\nThis is a friendly reminder that the payment for ${poCode} against invoice dated ${invoiceDate} is due.\n\nBest Regards,\nHemant`,
-//         };
-//         await transporter.sendMail(reminderMail);
-//         console.log(`Reminder email sent for vendor ${vendor} (${invoiceDate})`);
-//       } catch (err) {
-//         console.error("Failed to send reminder email:", err);
-//       }
-//     });
-//     res.json({
-//       message: "Invoice sent successfully via email. Reminder scheduled.",
-//       reminderDate,
-//     });
-//   } catch (err) {
-//     console.error("Mail error:", err);
-//     res.status(500).json({ message: "Failed to send invoice", error: err.message });
-//   }
-// };
-
-// ✅ Upload Invoice (send via email) and scheduling mail - Phase 3 (Scheduling mail storing in local - Working)
-// export const uploadInvoice = async (req, res) => {
-//   try {
-//     if (!req.files || !req.files.invoiceFile) {
-//       return res.status(400).json({ message: "Invoice file is required" });
-//     }
-
-//     const invoiceFile = req.files.invoiceFile[0];
-//     const grnFile = req.files.grnFile[0];
-//     const { invoiceDate, vendor, vendorCode, poCode } = req.body;
-
-//     // use invoiceFile.buffer and grnFile.buffer as needed
-//     // attach both in email if required
-//     const transporter = nodemailer.createTransport({
-//       host: "smtp.zoho.com",
-//       port: 465,
-//       secure: true,
-//       auth: {
-//         user: process.env.ZOHO_USER,
-//         pass: process.env.ZOHO_PASS,
-//       },
-//       from: process.env.ZOHO_USER,
-//     });
-
-//     transporter.verify((error, success) => {
-//       if (error) {
-//         console.error("SMTP connection error:", error);
-//       } else {
-//         console.log("SMTP server is ready:", success);
-//       }
-//     });
-
-//     // Send Invoice Email Immediately
-//     const mailOptions = {
-//       from: `"Hemant K" <${process.env.ZOHO_USER}>`,
-//       to: "accounts@globalplugin.com, commerce@globalplugin.com",
-//       subject: `${poCode} - GRN Completion for ${vendor} (Code: ${vendorCode}) on - ${invoiceDate}`,
-//       text: `Dear Mam/Sir,\n\nVendor: ${vendor}\nVendor Code: ${vendorCode}\nPO Code: ${poCode}\n\nPlease find attached purchase order and GRN file.`,
-//       attachments: [
-//         { filename: grnFile.originalname, content: grnFile.buffer },
-//         { filename: invoiceFile.originalname, content: invoiceFile.buffer },
-//       ],
-//     };
-
-//     await transporter.sendMail(mailOptions);
-
-//     // ✅ 2. Schedule Payment Reminder (3 weeks later)
-//     const reminderDate = new Date(invoiceDate);
-//     reminderDate.setDate(reminderDate.getDate() + 25); // add 25 days (3 weeks + buffer)
-
-//     schedule.scheduleJob(reminderDate, async () => {
-//       try {
-//         const reminderMail = {
-//           from: `"Hemant K" <${process.env.ZOHO_USER}>`,
-//           to: "hemantk@evolvedigitas.com",
-//           // to: "hemantk@evolvedigitas.com, accounts@globalplugin.com, commerce@globalplugin.com",
-//           subject: `Payment Reminder for ${poCode} ${vendor || "Vendor"} - Invoice dated ${invoiceDate}`,
-//           text: `Dear Team,\n\nThis is a friendly reminder that the payment for ${poCode} against invoice dated ${invoiceDate} is due.\n\nBest Regards,\nHemant`,
-//         };
-
-//         await transporter.sendMail(reminderMail);
-//         console.log(`✅ Reminder email sent for vendor ${vendor || "Unknown"} (${invoiceDate})`);
-//       } catch (err) {
-//         console.error("❌ Failed to send reminder email:", err);
-//       }
-//     });
-//     res.json({
-//       message: "Invoice sent successfully via email. Reminder scheduled.",
-//       reminderDate,
-//     });
-//     console.log(`✅ Reminder email sent for vendor ${poCode} ${vendor}`);
-//     console.log(`⏰ Sending reminder to: ${reminderDate}`);
-//   } catch (err) {
-//     console.error("Mail error:", err);
-//     res.status(500).json({ message: "Failed to send invoice", error: err.message });
-//   }
-// };
 
 // ✅ Upload Invoice (send via email) and scheduling mail - Phase 4 (Scheduling storing in mysql - Working)
 export const uploadInvoice = async (req, res) => {
@@ -313,8 +112,8 @@ export const uploadInvoice = async (req, res) => {
     const grnFile = req.files.grnFile[0];
     const { invoiceDate, vendor, vendorCode, poCode } = req.body;
 
-    // const sendTo = "accounts@globalplugin.com, commerce@globalplugin.com"; // Production
-    const sendTo = "hemantk@evolvedigitas.com"; // Development
+    const sendTo = "accounts@globalplugin.com, commerce@globalplugin.com"; // Production
+    // const sendTo = "hemantk@evolvedigitas.com"; // Development
 
     const transporter = nodemailer.createTransport({
       host: "smtp.zoho.com",
@@ -353,7 +152,7 @@ export const uploadInvoice = async (req, res) => {
     const reminderDays = vendorReminderDays[vendor] || vendorReminderDays["Default"];
 
     const reminderDate = new Date(invoiceDate);
-    reminderDate.setDate(reminderDate.getDate() + reminderDays); // Add 25 days
+    reminderDate.setDate(reminderDate.getDate() + reminderDays);
     reminderDate.setHours(12, 0, 0, 0); // 12:00 PM exactly
 
     // 3 Insert reminder record in DB
@@ -370,8 +169,8 @@ export const uploadInvoice = async (req, res) => {
       try {
         await transporter.sendMail({
           from: `"Hemant K" <${process.env.ZOHO_USER}>`,
-          to: sendTo,
-          // to: sendTo || "accounts@globalplugin.com, commerce@globalplugin.com",
+          // to: sendTo, // Dev mode
+          to: sendTo || "accounts@globalplugin.com, commerce@globalplugin.com", // Production Mode
           subject: `Payment Reminder for ${poCode} ${vendor || "Vendor"} - Invoice dated ${invoiceDate}`,
           text: `Dear Team,\n\nThis is a friendly reminder that the payment for ${poCode} against invoice dated ${invoiceDate} is due.\n\nBest Regards,\nHemant`,
         });
@@ -395,7 +194,7 @@ export const uploadInvoice = async (req, res) => {
       reminderDate,
       dbId: reminderId,
     });
-    
+
     console.log(`
     📅 Reminder scheduled for vendor: ${vendor}
     📌 PO Code: ${poCode}
