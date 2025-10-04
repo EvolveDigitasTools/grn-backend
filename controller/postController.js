@@ -4,7 +4,104 @@ import db from "../db.js";
 import schedule from "node-schedule";
 import { vendorReminderDays } from "../vendorReminderDays.js";
 
-// ✅ Upload GRN (Excel)
+// ✅ Upload GRN (Excel) - Phase 1 Working
+// export const uploadGrn = async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({ message: "No file uploaded" });
+//     }
+
+//     const workbook = new ExcelJS.Workbook();
+//     await workbook.xlsx.load(req.file.buffer);
+//     const worksheet = workbook.getWorksheet("GRN Sheet");
+
+//     if (!worksheet) {
+//       return res.status(400).json({ message: "GRN Sheet not found in uploaded file" });
+//     }
+
+//     const updates = [];
+//     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+//       if (rowNumber === 1) return; // Skip header row
+//       const skuCode = (row.getCell(1).text || "").trim();
+//       const receivedQty = parseFloat(row.getCell(4).value) || 0;
+//       const expiryDate = row.getCell(6).value;
+
+//       if (skuCode && !isNaN(receivedQty)) {
+//         updates.push({
+//           skuCode,
+//           receivedQty,
+//           expiryDate: expiryDate ? new Date(expiryDate) : null,
+//         });
+//       }
+//     });
+
+//     if (updates.length === 0) {
+//       return res.status(400).json({ message: "No valid data found in the GRN sheet" });
+//     }
+
+//     // Begin transaction
+//     await db.query("START TRANSACTION");
+
+//     try {
+//       let updatedCount = 0;
+//       let insertedCount = 0;
+//       let skipped = [];
+
+//       for (const update of updates) {
+//         const [skuRows] = await db.query(`SELECT id FROM sku WHERE skuCode = ?`, [update.skuCode]);
+
+//         if (skuRows.length === 0) {
+//           skipped.push(update.skuCode);
+//           continue;
+//         }
+
+//         const skuId = skuRows[0].id;
+
+//         let [result] = await db.query(
+//           `UPDATE inventory 
+//              SET quantity = quantity + ?, 
+//                  expiryDate = IFNULL(?, expiryDate)
+//            WHERE skuId = ?`,
+//           [update.receivedQty, update.expiryDate, skuId]
+//         );
+
+//         if (result.affectedRows > 0) {
+//           updatedCount++;
+//         } else {
+//           [result] = await db.query(
+//             `INSERT INTO inventory (skuId, quantity, expiryDate) VALUES (?, ?, ?)`,
+//             [skuId, update.receivedQty, update.expiryDate]
+//           );
+//           insertedCount++;
+//         }
+//       }
+
+//       await db.query("COMMIT");
+
+//       res.json({
+//         message: "GRN processed successfully",
+//         totalRows: updates.length,
+//         updatedRows: updatedCount,
+//         insertedRows: insertedCount,
+//         skippedSkus: skipped,
+//       });
+//     } catch (err) {
+//       await db.query("ROLLBACK");
+//       throw err;
+//     }
+//   } catch (err) {
+//     console.error("Error processing GRN upload:", {
+//       message: err.message,
+//       stack: err.stack,
+//       sqlMessage: err.sqlMessage,
+//       sqlState: err.sqlState,
+//     });
+//     res.status(500).json({ message: "Server error processing GRN upload", error: err.message });
+//   }
+// };
+
+
+// ✅ Upload GRN (Excel) - Phase 2 Working
 export const uploadGrn = async (req, res) => {
   try {
     if (!req.file) {
@@ -25,6 +122,19 @@ export const uploadGrn = async (req, res) => {
       const skuCode = (row.getCell(1).text || "").trim();
       const receivedQty = parseFloat(row.getCell(4).value) || 0;
       const expiryDate = row.getCell(6).value;
+
+      // 🔹 Convert any date format to yyyy-mm-dd
+      let formattedExpiry = null;
+      if (expiryDate) {
+        try {
+          const dateObj = new Date(expiryDate);
+          if (!isNaN(dateObj)) {
+            formattedExpiry = dateObj.toISOString().split("T")[0]; // yyyy-mm-dd
+          }
+        } catch (err) {
+          formattedExpiry = null;
+        }
+      }
 
       if (skuCode && !isNaN(receivedQty)) {
         updates.push({
@@ -60,7 +170,8 @@ export const uploadGrn = async (req, res) => {
         let [result] = await db.query(
           `UPDATE inventory 
              SET quantity = quantity + ?, 
-                 expiryDate = IFNULL(?, expiryDate)
+                 expiryDate = IFNULL(?, expiryDate),
+                 inventoryUpdatedAt = NOW()
            WHERE skuId = ?`,
           [update.receivedQty, update.expiryDate, skuId]
         );
@@ -69,7 +180,7 @@ export const uploadGrn = async (req, res) => {
           updatedCount++;
         } else {
           [result] = await db.query(
-            `INSERT INTO inventory (skuId, quantity, expiryDate) VALUES (?, ?, ?)`,
+            `INSERT INTO inventory (skuId, quantity, expiryDate, inventoryUpdatedAt) VALUES (?, ?, ?, NOW())`,
             [skuId, update.receivedQty, update.expiryDate]
           );
           insertedCount++;
@@ -99,6 +210,8 @@ export const uploadGrn = async (req, res) => {
     res.status(500).json({ message: "Server error processing GRN upload", error: err.message });
   }
 };
+
+
 
 
 // ✅ Upload Invoice (send via email) and scheduling mail - Phase 4 (Scheduling storing in mysql - Working)
