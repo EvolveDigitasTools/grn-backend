@@ -102,6 +102,116 @@ import { vendorReminderDays } from "../vendorReminderDays.js";
 
 
 // ✅ Upload GRN (Excel) - Phase 2 Working
+// export const uploadGrn = async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({ message: "No file uploaded" });
+//     }
+
+//     const workbook = new ExcelJS.Workbook();
+//     await workbook.xlsx.load(req.file.buffer);
+//     const worksheet = workbook.getWorksheet("GRN Sheet");
+
+//     if (!worksheet) {
+//       return res.status(400).json({ message: "GRN Sheet not found in uploaded file" });
+//     }
+
+//     const updates = [];
+//     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+//       if (rowNumber === 1) return; // Skip header row
+//       const skuCode = (row.getCell(1).text || "").trim();
+//       const receivedQty = parseFloat(row.getCell(4).value) || 0;
+//       const expiryDate = row.getCell(6).value;
+
+//       // 🔹 Convert any date format to yyyy-mm-dd
+//       let formattedExpiry = null;
+//       if (expiryDate) {
+//         try {
+//           const dateObj = new Date(expiryDate);
+//           if (!isNaN(dateObj)) {
+//             formattedExpiry = dateObj.toISOString().split("T")[0]; // yyyy-mm-dd
+//           }
+//         } catch (err) {
+//           formattedExpiry = null;
+//         }
+//       }
+
+//       if (skuCode && !isNaN(receivedQty)) {
+//         updates.push({
+//           skuCode,
+//           receivedQty,
+//           expiryDate: expiryDate ? new Date(expiryDate) : null,
+//         });
+//       }
+//     });
+
+//     if (updates.length === 0) {
+//       return res.status(400).json({ message: "No valid data found in the GRN sheet" });
+//     }
+
+//     // Begin transaction
+//     await db.query("START TRANSACTION");
+
+//     try {
+//       let updatedCount = 0;
+//       let insertedCount = 0;
+//       let skipped = [];
+
+//       for (const update of updates) {
+//         const [skuRows] = await db.query(`SELECT id FROM sku WHERE skuCode = ?`, [update.skuCode]);
+
+//         if (skuRows.length === 0) {
+//           skipped.push(update.skuCode);
+//           continue;
+//         }
+
+//         const skuId = skuRows[0].id;
+
+//         let [result] = await db.query(
+//           `UPDATE inventory 
+//              SET quantity = quantity + ?, 
+//                  expiryDate = IFNULL(?, expiryDate),
+//                  inventoryUpdatedAt = NOW()
+//            WHERE skuId = ?`,
+//           [update.receivedQty, update.expiryDate, skuId]
+//         );
+
+//         if (result.affectedRows > 0) {
+//           updatedCount++;
+//         } else {
+//           [result] = await db.query(
+//             `INSERT INTO inventory (skuId, quantity, expiryDate, inventoryUpdatedAt) VALUES (?, ?, ?, NOW())`,
+//             [skuId, update.receivedQty, update.expiryDate]
+//           );
+//           insertedCount++;
+//         }
+//       }
+
+//       await db.query("COMMIT");
+
+//       res.json({
+//         message: "GRN processed successfully",
+//         totalRows: updates.length,
+//         updatedRows: updatedCount,
+//         insertedRows: insertedCount,
+//         skippedSkus: skipped,
+//       });
+//     } catch (err) {
+//       await db.query("ROLLBACK");
+//       throw err;
+//     }
+//   } catch (err) {
+//     console.error("Error processing GRN upload:", {
+//       message: err.message,
+//       stack: err.stack,
+//       sqlMessage: err.sqlMessage,
+//       sqlState: err.sqlState,
+//     });
+//     res.status(500).json({ message: "Server error processing GRN upload", error: err.message });
+//   }
+// };
+
+// ✅ Upload GRN (Excel) - Phase 3 Testing with 5 Slots Logic
 export const uploadGrn = async (req, res) => {
   try {
     if (!req.file) {
@@ -118,29 +228,31 @@ export const uploadGrn = async (req, res) => {
 
     const updates = [];
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header row
+      if (rowNumber === 1) return; // Skip header
       const skuCode = (row.getCell(1).text || "").trim();
       const receivedQty = parseFloat(row.getCell(4).value) || 0;
       const expiryDate = row.getCell(6).value;
 
-      // 🔹 Convert any date format to yyyy-mm-dd
       let formattedExpiry = null;
       if (expiryDate) {
         try {
           const dateObj = new Date(expiryDate);
-          if (!isNaN(dateObj)) {
-            formattedExpiry = dateObj.toISOString().split("T")[0]; // yyyy-mm-dd
+          if (!isNaN(dateObj.getTime())) {
+            formattedExpiry = dateObj.toISOString().split("T")[0];
           }
-        } catch (err) {
+        } catch {
           formattedExpiry = null;
         }
       }
+
+      // Log raw Excel expiryDate for debugging
+      console.log(`Row ${rowNumber}, SKU: ${skuCode}, Raw Excel expiryDate: ${expiryDate}, Formatted: ${formattedExpiry}`);
 
       if (skuCode && !isNaN(receivedQty)) {
         updates.push({
           skuCode,
           receivedQty,
-          expiryDate: expiryDate ? new Date(expiryDate) : null,
+          expiryDate: formattedExpiry,
         });
       }
     });
@@ -149,67 +261,130 @@ export const uploadGrn = async (req, res) => {
       return res.status(400).json({ message: "No valid data found in the GRN sheet" });
     }
 
-    // Begin transaction
     await db.query("START TRANSACTION");
+    let updatedCount = 0;
+    let skipped = [];
 
-    try {
-      let updatedCount = 0;
-      let insertedCount = 0;
-      let skipped = [];
+    for (const update of updates) {
+      const { skuCode, receivedQty, expiryDate } = update;
 
-      for (const update of updates) {
-        const [skuRows] = await db.query(`SELECT id FROM sku WHERE skuCode = ?`, [update.skuCode]);
-
-        if (skuRows.length === 0) {
-          skipped.push(update.skuCode);
-          continue;
-        }
-
-        const skuId = skuRows[0].id;
-
-        let [result] = await db.query(
-          `UPDATE inventory 
-             SET quantity = quantity + ?, 
-                 expiryDate = IFNULL(?, expiryDate),
-                 inventoryUpdatedAt = NOW()
-           WHERE skuId = ?`,
-          [update.receivedQty, update.expiryDate, skuId]
-        );
-
-        if (result.affectedRows > 0) {
-          updatedCount++;
-        } else {
-          [result] = await db.query(
-            `INSERT INTO inventory (skuId, quantity, expiryDate, inventoryUpdatedAt) VALUES (?, ?, ?, NOW())`,
-            [skuId, update.receivedQty, update.expiryDate]
-          );
-          insertedCount++;
-        }
+      const [skuRows] = await db.query(`SELECT id FROM sku WHERE skuCode = ?`, [skuCode]);
+      if (skuRows.length === 0) {
+        skipped.push(skuCode);
+        continue;
       }
 
-      await db.query("COMMIT");
+      const skuId = skuRows[0].id;
+      console.log(`SKU: ${skuCode}, Retrieved skuId: ${skuId}, Query Time: ${new Date().toISOString()}`); // Log skuId and time
 
-      res.json({
-        message: "GRN processed successfully",
-        totalRows: updates.length,
-        updatedRows: updatedCount,
-        insertedRows: insertedCount,
-        skippedSkus: skipped,
+      // Get all 5 slots for that SKU
+      const [slots] = await db.query(
+        `SELECT id, batchId, expiryDate, quantity FROM inventory WHERE skuId = ? ORDER BY batchId ASC`,
+        [skuId]
+      );
+      console.log(`SKU: ${skuCode}, Raw Query Results Before Processing:`, slots.map(s => ({ ...s, expiryDate: s.expiryDate?.toString() }))); // Log raw data
+
+      // Skip if no slots found
+      if (slots.length === 0) {
+        skipped.push(skuCode);
+        continue;
+      }
+
+      // If no expiryDate provided → skip this SKU (barely case)
+      if (!expiryDate) {
+        skipped.push(`${skuCode} (no expiry)`);
+        continue;
+      }
+
+      // 1️⃣ Normalize both DB and sheet dates for safe comparison
+      const normalizeDate = (date) => {
+        if (!date) return null;
+        try {
+          console.log(`Normalizing date: ${JSON.stringify(date)}, Type: ${typeof date}`); // Log raw input
+          let normalized;
+          if (typeof date === 'string') {
+            // Handle as YYYY-MM-DD string
+            normalized = date.trim();
+          } else {
+            // Handle Date object or other types
+            const d = new Date(date);
+            if (isNaN(d.getTime())) return null;
+            normalized = d.toISOString().split("T")[0];
+          }
+          // Validate format (optional, can be removed if data is guaranteed correct)
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+          return normalized;
+        } catch (e) {
+          console.log(`Normalization error for date ${date}: ${e.message}`);
+          return null;
+        }
+      };
+
+      const formattedExpiry = normalizeDate(expiryDate);
+
+      // Log all slots for this SKU to verify database expiryDate values
+      console.log(`SKU: ${skuCode}, Slots:`, slots.map(s => ({
+        batchId: s.batchId,
+        rawExpiryDate: s.expiryDate,
+        normalizedExpiryDate: normalizeDate(s.expiryDate)
+      })));
+
+      // 2️⃣ Find existing slot with matching expiry using normalized dates
+      let matchedSlot = slots.find(s => {
+        const dbDate = normalizeDate(s.expiryDate);
+        // Log comparison for debugging
+        console.log(`SKU: ${skuCode}, batchId: ${s.batchId}, dbDate: ${dbDate}, formattedExpiry: ${formattedExpiry}, match: ${dbDate && dbDate === formattedExpiry}`);
+        return dbDate && dbDate === formattedExpiry;
       });
-    } catch (err) {
-      await db.query("ROLLBACK");
-      throw err;
+
+      if (matchedSlot) {
+        // Update quantity in the matching slot
+        const newQty = matchedSlot.quantity + receivedQty;
+        await db.query(
+          `UPDATE inventory
+           SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+           WHERE skuId = ? AND batchId = ?`,
+          [newQty, formattedExpiry, skuId, matchedSlot.batchId]
+        );
+        updatedCount++;
+        continue;
+      }
+
+      // 3️⃣ If no matching expiry, find the first blank slot
+      const blankSlot = slots.find(s => !s.expiryDate);
+      if (blankSlot) {
+        await db.query(
+          `UPDATE inventory
+           SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+           WHERE skuId = ? AND batchId = ?`,
+          [receivedQty, formattedExpiry, skuId, blankSlot.batchId]
+        );
+        updatedCount++;
+        continue;
+      }
+
+      // 3️⃣ If all slots are filled, skip this one
+      skipped.push(`${skuCode} (all slots filled)`);
     }
-  } catch (err) {
-    console.error("Error processing GRN upload:", {
-      message: err.message,
-      stack: err.stack,
-      sqlMessage: err.sqlMessage,
-      sqlState: err.sqlState,
+
+    await db.query("COMMIT");
+
+    res.json({
+      message: "GRN processed successfully",
+      totalRows: updates.length,
+      updatedRows: updatedCount,
+      skippedSkus: skipped,
     });
-    res.status(500).json({ message: "Server error processing GRN upload", error: err.message });
+  } catch (err) {
+    await db.query("ROLLBACK");
+    console.error("Error processing GRN upload:", err);
+    res.status(500).json({
+      message: "Server error processing GRN upload",
+      error: err.message,
+    });
   }
 };
+
 
 
 
