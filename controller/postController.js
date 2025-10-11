@@ -418,7 +418,6 @@ export const uploadGrn = async (req, res) => {
         }
       }
 
-      // Log raw Excel expiryDate for debugging
       console.log(`Row ${rowNumber}, SKU: ${skuCode}, Raw Excel expiryDate: ${expiryDate}, Formatted: ${formattedExpiry}`);
 
       if (skuCode && !isNaN(receivedQty)) {
@@ -448,43 +447,36 @@ export const uploadGrn = async (req, res) => {
       }
 
       const skuId = skuRows[0].id;
-      console.log(`SKU: ${skuCode}, Retrieved skuId: ${skuId}, Query Time: ${new Date().toISOString()}`); // Log skuId and time
+      console.log(`SKU: ${skuCode}, Retrieved skuId: ${skuId}, Query Time: ${new Date().toISOString()}`);
 
-      // Get all 5 slots for that SKU
       const [slots] = await db.query(
         `SELECT id, batchId, expiryDate, quantity FROM inventory WHERE skuId = ? ORDER BY batchId ASC`,
         [skuId]
       );
-      console.log(`SKU: ${skuCode}, Raw Query Results Before Processing:`, slots.map(s => ({ ...s, expiryDate: s.expiryDate?.toString() }))); // Log raw data
+      console.log(`SKU: ${skuCode}, Raw Query Results Before Processing:`, slots.map(s => ({ ...s, expiryDate: s.expiryDate?.toString() })));
 
-      // Skip if no slots found
       if (slots.length === 0) {
         skipped.push(skuCode);
         continue;
       }
 
-      // If no expiryDate provided → skip this SKU (barely case)
       if (!expiryDate) {
         skipped.push(`${skuCode} (no expiry)`);
         continue;
       }
 
-      // 1️⃣ Normalize both DB and sheet dates for safe comparison
       const normalizeDate = (date) => {
         if (!date) return null;
         try {
-          console.log(`Normalizing date: ${JSON.stringify(date)}, Type: ${typeof date}`); // Log raw input
+          console.log(`Normalizing date: ${JSON.stringify(date)}, Type: ${typeof date}`);
           let normalized;
           if (typeof date === 'string') {
-            // Handle as YYYY-MM-DD string
             normalized = date.trim();
           } else {
-            // Handle Date object or other types
             const d = new Date(date);
             if (isNaN(d.getTime())) return null;
             normalized = d.toISOString().split("T")[0];
           }
-          // Validate format (optional, can be removed if data is guaranteed correct)
           if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
           return normalized;
         } catch (e) {
@@ -495,23 +487,22 @@ export const uploadGrn = async (req, res) => {
 
       const formattedExpiry = normalizeDate(expiryDate);
 
-      // Log all slots for this SKU to verify database expiryDate values
       console.log(`SKU: ${skuCode}, Slots:`, slots.map(s => ({
         batchId: s.batchId,
         rawExpiryDate: s.expiryDate,
         normalizedExpiryDate: normalizeDate(s.expiryDate)
       })));
 
-      // 2️⃣ Find existing slot with matching expiry using normalized dates
+      // ✅ FIXED SECTION BELOW
+      // 1️⃣ Find existing slot with matching expiry
       let matchedSlot = slots.find(s => {
         const dbDate = normalizeDate(s.expiryDate);
-        // Log comparison for debugging
         console.log(`SKU: ${skuCode}, batchId: ${s.batchId}, dbDate: ${dbDate}, formattedExpiry: ${formattedExpiry}, match: ${dbDate && dbDate === formattedExpiry}`);
         return dbDate && dbDate === formattedExpiry;
       });
 
       if (matchedSlot) {
-        // Update quantity in the matching slot
+        // ✅ Update existing expiry slot
         const newQty = matchedSlot.quantity + receivedQty;
         await db.query(
           `UPDATE inventory
@@ -523,21 +514,21 @@ export const uploadGrn = async (req, res) => {
         continue;
       }
 
-      // 3️⃣ If all slots are filled, check if all quantities are 0 and no expiry → update first slot
-        const allSlotsEmpty = slots.every(s => (!s.expiryDate && s.quantity === 0));
-        if (allSlotsEmpty) {
-          const firstSlot = slots[0];
-          await db.query(
-            `UPDATE inventory
-            SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
-            WHERE skuId = ? AND batchId = ?`,
-            [receivedQty, formattedExpiry, skuId, firstSlot.batchId]
-          );
-          updatedCount++;
-          continue;
-        }
+      // ✅ NEW LOGIC: If expiry not found, find blank slot (no expiry + qty=0)
+      const blankSlot = slots.find(s => (!s.expiryDate || s.expiryDate === null || s.expiryDate === '') && s.quantity === 0);
 
-      // 3️⃣ If all slots are filled, skip this one
+      if (blankSlot) {
+        await db.query(
+          `UPDATE inventory
+           SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+           WHERE skuId = ? AND batchId = ?`,
+          [receivedQty, formattedExpiry, skuId, blankSlot.batchId]
+        );
+        updatedCount++;
+        continue;
+      }
+
+      // ❌ No matching or blank slot found
       skipped.push(`${skuCode} (all slots filled)`);
     }
 
@@ -558,6 +549,7 @@ export const uploadGrn = async (req, res) => {
     });
   }
 };
+
 
 
 // ✅ Upload Invoice (send via email) and scheduling mail - Phase 4 (Scheduling storing in mysql - Working)
