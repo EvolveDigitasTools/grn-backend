@@ -1,5 +1,5 @@
 import express from "express";
-import { getVendors, getPoCodes, downloadGrn } from "../controller/apiController.js";
+import { getVendors, getPoCodes, downloadGrn, getPoList, getAllPurchaseOrders, getPurchaseOrderDetails } from "../controller/apiController.js";
 
 const router = express.Router();
 
@@ -14,6 +14,12 @@ router.get("/", async (req, res) => {
       return getPoCodes(req, res);
     case "download-grn":
       return downloadGrn(req, res);
+    case "po-list":
+      return getPoList(req, res);      
+    case "get-all-pos":
+      return getAllPurchaseOrders(req, res);
+    case "get-po-details":
+      return getPurchaseOrderDetails(req, res);      
     default:
       return res.status(400).json({ message: "Invalid type parameter" });
   }
