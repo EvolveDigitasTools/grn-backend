@@ -754,7 +754,7 @@ export const uploadGrn = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    const { poCode } = req.body; // assuming frontend will send selected PO code in formData
+    const { poCode } = req.body;
     if (!poCode) {
       return res.status(400).json({ message: "PO code is required" });
     }
@@ -840,7 +840,7 @@ export const uploadGrn = async (req, res) => {
       }
       const skuId = skuRows[0].id;
 
-      // ✅ Update purchase_order_record based on skuId + purchaseOrderId
+      // Update purchase_order_record
       const [porRows] = await db.query(
         `SELECT id FROM purchase_order_record WHERE purchaseOrderId = ? AND skuId = ?`,
         [purchaseOrderId, skuId]
@@ -857,52 +857,60 @@ export const uploadGrn = async (req, res) => {
         [receivedQty, damaged, expiryDate, purchaseOrderId, skuId]
       );
 
-      // ✅ Update inventory table
-      const [slots] = await db.query(
-        `SELECT id, batchId, expiryDate, quantity FROM inventory WHERE skuId = ? ORDER BY batchId ASC`,
-        [skuId]
-      );
-      if (slots.length === 0) {
-        skipped.push(`${skuCode} (no inventory slots)`);
-        continue;
-      }
+      // Fetch all 5 slots for this SKU
+const [slots] = await db.query(
+  `SELECT id, skuId, quantity, expiryDate, batchId FROM inventory WHERE skuId = ?`,
+  [skuId]
+);
 
-      if (!expiryDate) {
-        skipped.push(`${skuCode} (no expiry)`);
-        continue;
-      }
+if (slots.length === 0) {
+  skipped.push(`${skuCode} (no inventory slots)`);
+  continue;
+}
 
-      const formattedExpiry = normalizeDate(expiryDate);
+const formattedExpiry = normalizeDate(expiryDate);
 
-      // Find existing slot with matching expiry
-      let matchedSlot = slots.find(s => normalizeDate(s.expiryDate) === formattedExpiry);
-      if (matchedSlot) {
-        const newQty = matchedSlot.quantity + receivedQty;
-        await db.query(
-          `UPDATE inventory
-           SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
-           WHERE skuId = ? AND batchId = ?`,
-          [newQty, formattedExpiry, skuId, matchedSlot.batchId]
-        );
-        updatedCount++;
-        continue;
-      }
+// 1️⃣ Check for existing slot with same expiry
+let matchedSlot = slots.find(s => normalizeDate(s.expiryDate) === formattedExpiry);
+if (matchedSlot) {
+  const newQty = matchedSlot.quantity + receivedQty;
+  await db.query(
+    `UPDATE inventory
+     SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+     WHERE id = ?`,
+    [newQty, formattedExpiry, matchedSlot.id]
+  );
+  updatedCount++;
+  continue;
+}
 
-      // Find blank slot (no expiry + qty=0)
-      const blankSlot = slots.find(s => (!s.expiryDate || s.expiryDate === null || s.expiryDate === '') && s.quantity === 0);
-      if (blankSlot) {
-        await db.query(
-          `UPDATE inventory
-           SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
-           WHERE skuId = ? AND batchId = ?`,
-          [receivedQty, formattedExpiry, skuId, blankSlot.batchId]
-        );
-        updatedCount++;
-        continue;
-      }
+// 2️⃣ Check for first blank or zero slot
+let blankSlot = slots.find(s => !s.expiryDate || s.expiryDate === null || s.quantity === 0);
+if (blankSlot) {
+  await db.query(
+    `UPDATE inventory
+     SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+     WHERE id = ?`,
+    [receivedQty, formattedExpiry, blankSlot.id]
+  );
+  updatedCount++;
+  continue;
+}
 
-      // No matching or blank slot found
-      skipped.push(`${skuCode} (all inventory slots filled)`);
+// 3️⃣ If all slots filled, update slot_1
+let slot1 = slots.find(s => s.batchId.endsWith("_slot_1"));
+if (slot1) {
+  await db.query(
+    `UPDATE inventory
+     SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+     WHERE id = ?`,
+    [receivedQty, formattedExpiry, slot1.id]
+  );
+  updatedCount++;
+} else {
+  skipped.push(`${skuCode} (no slot_1 found)`);
+}
+
     }
 
     await db.query("COMMIT");
