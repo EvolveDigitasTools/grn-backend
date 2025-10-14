@@ -216,6 +216,7 @@ export const getPurchaseOrderDetails = async (req, res) => {
     if (!poCode) {
       return res.status(400).json({ message: "PO code is required" });
     }
+
     const [rows] = await db.query(`
       SELECT 
         s.skuCode,
@@ -223,13 +224,11 @@ export const getPurchaseOrderDetails = async (req, res) => {
         por.expectedQty,
         COALESCE(por.receivedQty, 0) AS receivedQty,
         COALESCE(por.damaged, 0) AS damaged,
-        MAX(i.expiryDate) AS expiryDate
+        por.expiryDate
       FROM purchase_order po
       JOIN purchase_order_record por ON po.id = por.purchaseOrderId
       JOIN sku s ON por.skuId = s.id
-      LEFT JOIN inventory i ON s.id = i.skuId
       WHERE po.poCode = ?
-      GROUP BY s.skuCode, s.name, por.expectedQty, por.receivedQty, por.damaged
     `, [poCode]);
 
     console.log(`getPurchaseOrderDetails for poCode=${poCode}:`, rows);

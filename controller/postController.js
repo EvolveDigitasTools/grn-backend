@@ -550,17 +550,225 @@ import { vendorReminderDays } from "../vendorReminderDays.js";
 //   }
 // };
 
-// ✅ Upload GRN (Excel) - Phase 55 Slots Logic and saving recevied qty and damaged in db
+// ✅ Upload GRN (Excel) - Phase 5, 5 Slots Logic and saving recevied qty and damaged in db
+// export const uploadGrn = async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({ message: "No file uploaded" });
+//     }
+
+//     const { poCode } = req.query;
+//     if (!poCode) {
+//       return res.status(400).json({ message: "PO code is required" });
+//     }
+
+//     const workbook = new ExcelJS.Workbook();
+//     await workbook.xlsx.load(req.file.buffer);
+//     const worksheet = workbook.getWorksheet("GRN Sheet");
+
+//     if (!worksheet) {
+//       return res.status(400).json({ message: "GRN Sheet not found in uploaded file" });
+//     }
+
+//     // Get purchaseOrderId for the given poCode
+//     const [poRows] = await db.query(`SELECT id FROM purchase_order WHERE poCode = ?`, [poCode]);
+//     if (poRows.length === 0) {
+//       return res.status(404).json({ message: `Purchase order ${poCode} not found` });
+//     }
+//     const purchaseOrderId = poRows[0].id;
+
+//     const updates = [];
+//     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+//       if (rowNumber === 1) return; // Skip header
+//       const skuCode = (row.getCell(1).text || "").trim();
+//       const receivedQty = parseFloat(row.getCell(4).value) || 0;
+//       const damaged = parseFloat(row.getCell(5).value) || 0; // Assuming Damaged is in column 5
+//       const expiryDate = row.getCell(6).value;
+
+//       let formattedExpiry = null;
+//       if (expiryDate) {
+//         try {
+//           const dateObj = new Date(expiryDate);
+//           if (!isNaN(dateObj.getTime())) {
+//             formattedExpiry = dateObj.toISOString().split("T")[0];
+//           }
+//         } catch {
+//           formattedExpiry = null;
+//         }
+//       }
+
+//       console.log(`Row ${rowNumber}, SKU: ${skuCode}, ReceivedQty: ${receivedQty}, Damaged: ${damaged}, Raw Excel expiryDate: ${expiryDate}, Formatted: ${formattedExpiry}`);
+
+//       if (skuCode && !isNaN(receivedQty)) {
+//         updates.push({
+//           skuCode,
+//           receivedQty,
+//           damaged,
+//           expiryDate: formattedExpiry,
+//         });
+//       }
+//     });
+
+//     if (updates.length === 0) {
+//       return res.status(400).json({ message: "No valid data found in the GRN sheet" });
+//     }
+
+//     await db.query("START TRANSACTION");
+//     let updatedCount = 0;
+//     let skipped = [];
+
+//     for (const update of updates) {
+//       const { skuCode, receivedQty, damaged, expiryDate } = update;
+
+//       // Get skuId
+//       const [skuRows] = await db.query(`SELECT id FROM sku WHERE skuCode = ?`, [skuCode]);
+//       if (skuRows.length === 0) {
+//         skipped.push(skuCode);
+//         continue;
+//       }
+//       const skuId = skuRows[0].id;
+//       console.log(`SKU: ${skuCode}, Retrieved skuId: ${skuId}, Query Time: ${new Date().toISOString()}`);
+
+//       // Update purchase_order_record
+//       const [porRows] = await db.query(
+//         `SELECT id FROM purchase_order_record WHERE purchaseOrderId = ? AND skuId = ?`,
+//         [purchaseOrderId, skuId]
+//       );
+//       if (porRows.length === 0) {
+//         skipped.push(`${skuCode} (no matching purchase order record)`);
+//         continue;
+//       }
+
+//       await db.query(
+//         `UPDATE purchase_order_record
+//          SET receivedQty = ?, damaged = ?, updatedAt = NOW()
+//          WHERE purchaseOrderId = ? AND skuId = ?`,
+//         [receivedQty, damaged, purchaseOrderId, skuId]
+//       );
+
+//       // Update inventory (existing logic)
+//       const [slots] = await db.query(
+//         `SELECT id, batchId, expiryDate, quantity FROM inventory WHERE skuId = ? ORDER BY batchId ASC`,
+//         [skuId]
+//       );
+//       console.log(`SKU: ${skuCode}, Raw Query Results Before Processing:`, slots.map(s => ({ ...s, expiryDate: s.expiryDate?.toString() })));
+
+//       if (slots.length === 0) {
+//         skipped.push(skuCode);
+//         continue;
+//       }
+
+//       if (!expiryDate) {
+//         skipped.push(`${skuCode} (no expiry)`);
+//         continue;
+//       }
+
+//       const normalizeDate = (date) => {
+//         if (!date) return null;
+//         try {
+//           console.log(`Normalizing date: ${JSON.stringify(date)}, Type: ${typeof date}`);
+//           let normalized;
+//           if (typeof date === 'string') {
+//             normalized = date.trim();
+//           } else {
+//             const d = new Date(date);
+//             if (isNaN(d.getTime())) return null;
+//             normalized = d.toISOString().split("T")[0];
+//           }
+//           if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+//           return normalized;
+//         } catch (e) {
+//           console.log(`Normalization error for date ${date}: ${e.message}`);
+//           return null;
+//         }
+//       };
+
+//       const formattedExpiry = normalizeDate(expiryDate);
+
+//       console.log(`SKU: ${skuCode}, Slots:`, slots.map(s => ({
+//         batchId: s.batchId,
+//         rawExpiryDate: s.expiryDate,
+//         normalizedExpiryDate: normalizeDate(s.expiryDate)
+//       })));
+
+//       // Find existing slot with matching expiry
+//       let matchedSlot = slots.find(s => {
+//         const dbDate = normalizeDate(s.expiryDate);
+//         console.log(`SKU: ${skuCode}, batchId: ${s.batchId}, dbDate: ${dbDate}, formattedExpiry: ${formattedExpiry}, match: ${dbDate && dbDate === formattedExpiry}`);
+//         return dbDate && dbDate === formattedExpiry;
+//       });
+
+//       if (matchedSlot) {
+//         // Update existing expiry slot
+//         const newQty = matchedSlot.quantity + receivedQty;
+//         await db.query(
+//           `UPDATE inventory
+//            SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+//            WHERE skuId = ? AND batchId = ?`,
+//           [newQty, formattedExpiry, skuId, matchedSlot.batchId]
+//         );
+//         updatedCount++;
+//         continue;
+//       }
+
+//       // Find blank slot (no expiry + qty=0)
+//       const blankSlot = slots.find(s => (!s.expiryDate || s.expiryDate === null || s.expiryDate === '') && s.quantity === 0);
+
+//       if (blankSlot) {
+//         await db.query(
+//           `UPDATE inventory
+//            SET quantity = ?, expiryDate = ?, inventoryUpdatedAt = NOW()
+//            WHERE skuId = ? AND batchId = ?`,
+//           [receivedQty, formattedExpiry, skuId, blankSlot.batchId]
+//         );
+//         updatedCount++;
+//         continue;
+//       }
+
+//       // No matching or blank slot found
+//       skipped.push(`${skuCode} (all slots filled)`);
+//     }
+
+//     await db.query("COMMIT");
+
+//     res.json({
+//       message: "GRN processed successfully",
+//       totalRows: updates.length,
+//       updatedRows: updatedCount,
+//       skippedSkus: skipped,
+//     });
+//   } catch (err) {
+//     await db.query("ROLLBACK");
+//     console.error("Error processing GRN upload:", err);
+//     res.status(500).json({
+//       message: "Server error processing GRN upload",
+//       error: err.message,
+//     });
+//   }
+// };
+
+// ✅ Upload GRN (Excel) - Phase 6, 5 Slots Logic and saving recevied qty, damaged and expiry date in db
 export const uploadGrn = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    const { poCode } = req.query;
+    const { poCode } = req.body; // assuming frontend will send selected PO code in formData
     if (!poCode) {
       return res.status(400).json({ message: "PO code is required" });
     }
+
+    console.log(`📦 Incoming GRN Upload for PO: ${poCode}`);
+    console.log(`File received: Yes`);
+    console.log(`Query params:`, req.query);
+
+    // Get purchaseOrderId for the given poCode
+    const [poRows] = await db.query(`SELECT id FROM purchase_order WHERE poCode = ?`, [poCode]);
+    if (poRows.length === 0) {
+      return res.status(404).json({ message: `Purchase order ${poCode} not found` });
+    }
+    const purchaseOrderId = poRows[0].id;
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
@@ -570,19 +778,12 @@ export const uploadGrn = async (req, res) => {
       return res.status(400).json({ message: "GRN Sheet not found in uploaded file" });
     }
 
-    // Get purchaseOrderId for the given poCode
-    const [poRows] = await db.query(`SELECT id FROM purchase_order WHERE poCode = ?`, [poCode]);
-    if (poRows.length === 0) {
-      return res.status(404).json({ message: `Purchase order ${poCode} not found` });
-    }
-    const purchaseOrderId = poRows[0].id;
-
     const updates = [];
     worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       if (rowNumber === 1) return; // Skip header
       const skuCode = (row.getCell(1).text || "").trim();
       const receivedQty = parseFloat(row.getCell(4).value) || 0;
-      const damaged = parseFloat(row.getCell(5).value) || 0; // Assuming Damaged is in column 5
+      const damaged = parseFloat(row.getCell(5).value) || 0;
       const expiryDate = row.getCell(6).value;
 
       let formattedExpiry = null;
@@ -597,15 +798,8 @@ export const uploadGrn = async (req, res) => {
         }
       }
 
-      console.log(`Row ${rowNumber}, SKU: ${skuCode}, ReceivedQty: ${receivedQty}, Damaged: ${damaged}, Raw Excel expiryDate: ${expiryDate}, Formatted: ${formattedExpiry}`);
-
       if (skuCode && !isNaN(receivedQty)) {
-        updates.push({
-          skuCode,
-          receivedQty,
-          damaged,
-          expiryDate: formattedExpiry,
-        });
+        updates.push({ skuCode, receivedQty, damaged, expiryDate: formattedExpiry });
       }
     });
 
@@ -617,44 +811,59 @@ export const uploadGrn = async (req, res) => {
     let updatedCount = 0;
     let skipped = [];
 
+    const normalizeDate = (date) => {
+      if (!date) return null;
+      try {
+        let normalized;
+        if (typeof date === "string") {
+          normalized = date.trim();
+        } else {
+          const d = new Date(date);
+          if (isNaN(d.getTime())) return null;
+          normalized = d.toISOString().split("T")[0];
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+        return normalized;
+      } catch {
+        return null;
+      }
+    };
+
     for (const update of updates) {
       const { skuCode, receivedQty, damaged, expiryDate } = update;
 
       // Get skuId
       const [skuRows] = await db.query(`SELECT id FROM sku WHERE skuCode = ?`, [skuCode]);
       if (skuRows.length === 0) {
-        skipped.push(skuCode);
+        skipped.push(`${skuCode} (SKU not found)`);
         continue;
       }
       const skuId = skuRows[0].id;
-      console.log(`SKU: ${skuCode}, Retrieved skuId: ${skuId}, Query Time: ${new Date().toISOString()}`);
 
-      // Update purchase_order_record
+      // ✅ Update purchase_order_record based on skuId + purchaseOrderId
       const [porRows] = await db.query(
         `SELECT id FROM purchase_order_record WHERE purchaseOrderId = ? AND skuId = ?`,
         [purchaseOrderId, skuId]
       );
       if (porRows.length === 0) {
-        skipped.push(`${skuCode} (no matching purchase order record)`);
+        skipped.push(`${skuCode} (no matching PO record)`);
         continue;
       }
 
       await db.query(
         `UPDATE purchase_order_record
-         SET receivedQty = ?, damaged = ?, updatedAt = NOW()
+         SET receivedQty = ?, damaged = ?, expiryDate = ?, updatedAt = NOW()
          WHERE purchaseOrderId = ? AND skuId = ?`,
-        [receivedQty, damaged, purchaseOrderId, skuId]
+        [receivedQty, damaged, expiryDate, purchaseOrderId, skuId]
       );
 
-      // Update inventory (existing logic)
+      // ✅ Update inventory table
       const [slots] = await db.query(
         `SELECT id, batchId, expiryDate, quantity FROM inventory WHERE skuId = ? ORDER BY batchId ASC`,
         [skuId]
       );
-      console.log(`SKU: ${skuCode}, Raw Query Results Before Processing:`, slots.map(s => ({ ...s, expiryDate: s.expiryDate?.toString() })));
-
       if (slots.length === 0) {
-        skipped.push(skuCode);
+        skipped.push(`${skuCode} (no inventory slots)`);
         continue;
       }
 
@@ -663,43 +872,11 @@ export const uploadGrn = async (req, res) => {
         continue;
       }
 
-      const normalizeDate = (date) => {
-        if (!date) return null;
-        try {
-          console.log(`Normalizing date: ${JSON.stringify(date)}, Type: ${typeof date}`);
-          let normalized;
-          if (typeof date === 'string') {
-            normalized = date.trim();
-          } else {
-            const d = new Date(date);
-            if (isNaN(d.getTime())) return null;
-            normalized = d.toISOString().split("T")[0];
-          }
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
-          return normalized;
-        } catch (e) {
-          console.log(`Normalization error for date ${date}: ${e.message}`);
-          return null;
-        }
-      };
-
       const formattedExpiry = normalizeDate(expiryDate);
 
-      console.log(`SKU: ${skuCode}, Slots:`, slots.map(s => ({
-        batchId: s.batchId,
-        rawExpiryDate: s.expiryDate,
-        normalizedExpiryDate: normalizeDate(s.expiryDate)
-      })));
-
       // Find existing slot with matching expiry
-      let matchedSlot = slots.find(s => {
-        const dbDate = normalizeDate(s.expiryDate);
-        console.log(`SKU: ${skuCode}, batchId: ${s.batchId}, dbDate: ${dbDate}, formattedExpiry: ${formattedExpiry}, match: ${dbDate && dbDate === formattedExpiry}`);
-        return dbDate && dbDate === formattedExpiry;
-      });
-
+      let matchedSlot = slots.find(s => normalizeDate(s.expiryDate) === formattedExpiry);
       if (matchedSlot) {
-        // Update existing expiry slot
         const newQty = matchedSlot.quantity + receivedQty;
         await db.query(
           `UPDATE inventory
@@ -713,7 +890,6 @@ export const uploadGrn = async (req, res) => {
 
       // Find blank slot (no expiry + qty=0)
       const blankSlot = slots.find(s => (!s.expiryDate || s.expiryDate === null || s.expiryDate === '') && s.quantity === 0);
-
       if (blankSlot) {
         await db.query(
           `UPDATE inventory
@@ -726,7 +902,7 @@ export const uploadGrn = async (req, res) => {
       }
 
       // No matching or blank slot found
-      skipped.push(`${skuCode} (all slots filled)`);
+      skipped.push(`${skuCode} (all inventory slots filled)`);
     }
 
     await db.query("COMMIT");
