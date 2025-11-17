@@ -223,7 +223,7 @@ export const getPoList = async (req, res) => {
     baseQuery += ` ORDER BY po.createdAt DESC`;
 
     const [rows] = await db.query(baseQuery, params);
-    console.log("getPoList response:", rows); // Debug
+    // console.log("getPoList response:", rows); // Debug
     res.json(rows);
   } catch (err) {
     console.error("Error fetching PO list:", err);
@@ -307,7 +307,7 @@ export const getPurchaseOrderDetails = async (req, res) => {
       WHERE po.poCode = ?
     `, [poCode]);
 
-    console.log(`getPurchaseOrderDetails for poCode=${poCode}:`, rows);
+    // console.log(`getPurchaseOrderDetails for poCode=${poCode}:`, rows);
     res.json(rows);
   } catch (err) {
     console.error("Error fetching PO details:", err);
