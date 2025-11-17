@@ -1,9 +1,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import apiRoutes from "./routes/apiRoutes.js";
-import postRoutes from "./routes/postRoutes.js";
-import { reloadScheduledReminders } from "./controller/postController.js";
+import getAllGrnDetailsRoutes from "./routes/getAllGrnDetailsRoutes.js";
+import uploadGrnRoutes from "./routes/uploadGrnRoutes.js";
+import "./controller/poReminderController.js";
 
 dotenv.config();
 
@@ -25,8 +25,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/api", apiRoutes);
-app.use("/post", postRoutes);
+app.use("/api", getAllGrnDetailsRoutes);
+app.use("/post", uploadGrnRoutes);
 
 
 //Health check
@@ -36,7 +36,6 @@ app.get("/", async (req, res) => {
 
 const PORT = process.env.PORT || 5000
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`)
-    reloadScheduledReminders();
+app.listen(PORT, async () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });

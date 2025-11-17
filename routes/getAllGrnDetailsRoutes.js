@@ -1,5 +1,12 @@
 import express from "express";
-import { getVendors, getPoCodes, downloadGrn, getPoList, getAllPurchaseOrders, getPurchaseOrderDetails } from "../controller/apiController.js";
+import { 
+  getVendors, 
+  getPoCodes, 
+  downloadGrn, 
+  getPoList, 
+  getAllPurchaseOrders, 
+  getPurchaseOrderDetails 
+} from "../controller/getAllGrnDetailsController.js";
 
 const router = express.Router();
 

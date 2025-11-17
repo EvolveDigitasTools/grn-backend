@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import db from "../db.js"; // adjust path to your db connection
 
-// ✅ Get all vendors
+// Get all vendors
 export const getVendors = async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -14,7 +14,7 @@ export const getVendors = async (req, res) => {
   }
 };
 
-// ✅ Get all PO codes
+// Get all PO codes
 export const getPoCodes = async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -27,7 +27,7 @@ export const getPoCodes = async (req, res) => {
   }
 };
 
-// ✅ Download GRN Excel - Phase 1
+// Download GRN Excel - Phase 1
 // export const downloadGrn = async (req, res) => {
 //   try {
 //     const { poCode } = req.query;
@@ -100,7 +100,7 @@ export const getPoCodes = async (req, res) => {
 //   }
 // };
 
-// ✅ Download GRN Excel - Phase 2 with multiple po number
+// Download GRN Excel - Phase 2 with multiple po number
 export const downloadGrn = async (req, res) => {
   try {
     const { poCode } = req.query;
@@ -176,9 +176,7 @@ export const downloadGrn = async (req, res) => {
   }
 };
 
-
-
-// ✅ Get PO list with vendor info for table
+// Get PO list with vendor info for table
 export const getPoList = async (req, res) => {
   try {
     const { vendorCode, month, poCode, search } = req.query;
@@ -233,7 +231,7 @@ export const getPoList = async (req, res) => {
   }
 };
 
-// ✅ Get all PO list with vendor info and GRN details (unchanged, keep for get-all-pos)
+// Get all PO list with vendor info and GRN details (unchanged, keep for get-all-pos)
 export const getAllPurchaseOrders = async (req, res) => {
   try {
     const { vendorCode, month, poCode, search } = req.query;
