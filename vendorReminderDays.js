@@ -10,5 +10,5 @@ export const vendorReminderDays = {
   "Signature BanLab": 26,
   "Puress Organic": 26,
   "Scentsmith Luxury Maison LLP": 26,
-  "Default": 25, // if vendor not found
+  "Default": 25,
 };
