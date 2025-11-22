@@ -538,7 +538,7 @@ export const uploadInvoice = async (req, res) => {
       </div>
 
       <div style="padding: 25px; color: #333;">
-        <p style="font-size: 15px; margin-bottom: 15px;">Dear Anu Ma'am,</p>
+        <p style="font-size: 15px; margin-bottom: 15px;">Hi,</p>
         <p style="font-size: 15px; line-height: 1.6;">
           The <strong>Goods Received Note (GRN)</strong> for the following Purchase Order has been completed.
           Please find attached the related <strong>GRN</strong> and <strong>Invoice</strong> files for your reference.
